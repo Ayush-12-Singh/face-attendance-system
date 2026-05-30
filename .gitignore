@@ -4,7 +4,6 @@ database.db
 attendance.csv
 attendance.xlsx
 Images/
-.venv/
 venv/
 env/
 .env
