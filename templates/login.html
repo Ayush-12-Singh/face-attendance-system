@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+
+<div class="login-grid">
+    <div class="login-card">
+        <h2 class="login-title">🔐 Admin Login</h2>
+
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+
+        <form method="POST" class="login-form">
+            <input type="text" name="username" placeholder="Username" required>
+            <input type="password" name="password" placeholder="Password" required>
+            <button type="submit" class="login-btn">Sign In</button>
+        </form>
+
+        <p class="login-footer">AI Face Attendance • Cyan Secure UI</p>
+    </div>
+
+    <div class="login-card google-card">
+        <div class="google-header">
+            <h3>Google Sign-In</h3>
+            <p class="muted">Fast login with Google account.</p>
+        </div>
+
+        <div id="g_id_signin" class="google-signin"></div>
+
+        <div id="googleStatus" class="google-status"></div>
+    </div>
+</div>
+
+<script>
+// Google Identity Services login -> backend /google_login
+window.handleCredentialResponse = function(response){
+    if(!response || !response.credential){
+        document.getElementById("googleStatus").innerText = "Google sign-in failed.";
+        return;
+    }
+
+    document.getElementById("googleStatus").innerText = "Signing in...";
+
+    fetch('/google_login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `id_token=${encodeURIComponent(response.credential)}`
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.status === "success"){
+            window.location.href = "/";
+        } else {
+            document.getElementById("googleStatus").innerText = data.reason || "Google login failed";
+        }
+    })
+    .catch(()=>{
+        document.getElementById("googleStatus").innerText = "Network error during Google login.";
+    });
+}
+
+function waitGoogleAndInit(){
+    const clientId = "{{ google_client_id|default('') }}";
+    if(!clientId){
+        document.getElementById("googleStatus").innerText = "Set GOOGLE_CLIENT_ID to enable Google Sign-In.";
+        return;
+    }
+
+    if(!window.google || !google.accounts || !google.accounts.id){
+        setTimeout(waitGoogleAndInit, 250);
+        return;
+    }
+
+    google.accounts.id.initialize({
+        client_id: clientId,
+        callback: window.handleCredentialResponse
+    });
+
+    google.accounts.id.renderButton(
+        document.getElementById('g_id_signin'),
+        { theme: 'outline', size: 'large', width: 280 }
+    );
+
+    google.accounts.id.prompt();
+}
+
+window.addEventListener('load', waitGoogleAndInit);
+</script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+</body>
+</html>

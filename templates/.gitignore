@@ -1,0 +1,16 @@
+# IDE and Cache files
+.vscode/
+__pycache__/
+
+# Database and Generated Data
+database
+attendance.csv
+attendance.xlsx
+
+# Captured face data (assuming your Images folder holds the training photos)
+Images/
+
+# Virtual Environment and Secrets
+venv/
+env/
+.env

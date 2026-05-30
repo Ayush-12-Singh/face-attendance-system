@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Attendance Dashboard</title>
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/style.css">
+
+    <!-- ICONS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+
+<body>
+
+<!-- ===== SIDEBAR ===== -->
+<div class="sidebar">
+    <h2>Dashboard</h2>
+
+    <ul>
+        <li onclick="showSection('camera')"><i class="fa-solid fa-camera"></i> Camera</li>
+        <li onclick="showSection('attendance')"><i class="fa-solid fa-table"></i> Attendance</li>
+        <li onclick="showSection('lowAttendance')"><i class="fa-solid fa-user-check"></i> Low Attendance</li>
+        <li onclick="showSection('upload')"><i class="fa-solid fa-user-plus"></i> Add Person</li>
+        <li onclick="showSection('sections')"><i class="fa-solid fa-layer-group"></i> Sections</li>
+        <li onclick="downloadFile()"><i class="fa-solid fa-download"></i> Download</li>
+        <li class="logout" onclick="window.location='/logout'"><i class="fa-solid fa-right-from-bracket"></i> Logout</li>
+    </ul>
+</div>
+
+<!-- ===== MAIN ===== -->
+<div class="main">
+
+    <div class="topbar">
+        <div class="topbar-left">
+            <i class="fa-solid fa-fingerprint"></i>
+            <h1>AI Face Attendance</h1>
+        </div>
+        <div class="topbar-right">
+            <div class="welcome">Welcome, {{ session['user'] }}</div>
+            <div class="chips">
+                <span class="chip" id="chipPeople">Known People: -</span>
+                <span class="chip" id="chipThreshold">Threshold: -</span>
+                <span class="chip" id="chipLast">Last Marked: -</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="top-row">
+        <div class="mini-card">
+            <div class="mini-label">Known People</div>
+            <div class="mini-value" id="peopleCount">-</div>
+        </div>
+        <div class="mini-card">
+            <div class="mini-label">Recognition Threshold (LBPH)</div>
+            <div class="mini-value">
+                <span id="thresholdValueTop">-</span>
+            </div>
+        </div>
+        <div class="mini-card">
+            <div class="mini-label">Last Marked</div>
+            <div class="mini-value" id="lastMarked">-</div>
+        </div>
+    </div>
+
+    <!-- ================= CAMERA ================= -->
+    <div id="camera" class="section">
+
+        <!-- ================= SESSION ================= -->
+        <div class="card">
+            <h2><i class="fa-solid fa-chalkboard-user"></i> Attendance Session</h2>
+
+            <div class="manage-row">
+                <select id="sessionSubjectSelect"></select>
+                <select id="sessionSectionSelect"></select>
+                <button class="apply-btn" onclick="startAttendanceSession()">Start Session</button>
+            </div>
+
+            <div id="activeSessionInfo" class="google-status">No session started.</div>
+        </div>
+
+        <div class="card">
+            <h2><i class="fa-solid fa-video"></i> Live Camera</h2>
+
+            <button onclick="startCamera()">Start</button>
+            <button onclick="stopCamera()">Stop</button>
+
+            <img id="videoFeed" width="600">
+        </div>
+
+        <div class="card recognition-card">
+            <h2><i class="fa-solid fa-sliders"></i> Recognition Tuning</h2>
+
+            <div class="tuning">
+                <label for="thresholdRange">
+                    Confidence Threshold (lower is stricter)
+                    <span class="tuning-value" id="thresholdValue">58</span>
+                </label>
+                <input type="range" id="thresholdRange" min="10" max="200" step="1" value="58">
+            </div>
+
+            <div class="tuning-actions">
+                <button class="apply-btn" onclick="applyThreshold()"><i class="fa-solid fa-bolt"></i> Apply</button>
+            </div>
+
+            <div class="hint" id="stabilityHint">
+                Attendance will be marked only after the same identity is detected for multiple frames (reduces wrong matches).
+            </div>
+        </div>
+
+        <div class="card activity-card">
+            <h2><i class="fa-solid fa-clock-rotate-left"></i> Recent Activity</h2>
+            <div id="activityList" class="activity-list">Loading...</div>
+        </div>
+
+        <!-- MANUAL ATTENDANCE -->
+        <div class="card">
+            <h2>Manual Attendance</h2>
+
+            <input type="text" id="manualName" placeholder="Enter Name">
+            <select id="manualSubjectSelect">
+                <option value="">Select Subject</option>
+            </select>
+            <select id="manualSection">
+                <option value="">Select Section</option>
+            </select>
+            <input type="password" id="manualPass" placeholder="Enter Password">
+
+            <button onclick="manualAttendance()">Mark Manually</button>
+        </div>
+
+    </div>
+
+    <!-- ================= ATTENDANCE ================= -->
+    <div id="attendance" class="section" style="display:none;">
+
+        <div class="card">
+            <h2>Attendance Records</h2>
+
+            <div class="attendance-toolbar">
+                <input type="text" id="attendanceSearch" placeholder="Search name or mode...">
+
+                <input type="date" id="attendanceDate" title="Filter by date">
+
+                <select id="attendanceSectionFilter">
+                    <option value="">All Sections</option>
+                </select>
+
+                <select id="attendanceSubjectFilter">
+                    <option value="">All Subjects</option>
+                </select>
+
+                <select id="attendanceModeFilter">
+                    <option value="">All Modes</option>
+                    <option value="AI">AI</option>
+                    <option value="MANUAL">MANUAL</option>
+                </select>
+
+                <button class="toolbar-btn" onclick="refreshAttendance()">Refresh</button>
+                <button class="toolbar-btn" onclick="exportAttendance()">Export CSV</button>
+            </div>
+            <p class="filter-hint">Filters apply immediately. Section filter includes all sections from records.</p>
+
+            <table id="attendanceTable">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                        <th>Mode</th>
+                        <th>Section</th>
+                        <th>Subject</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+    </div>
+    
+
+    <!-- ================= LOW ATTENDANCE ================= -->
+    <div id="lowAttendance" class="section" style="display:none;">
+        <div class="card">
+            <h2><i class="fa-solid fa-user-check"></i> Low Attendance</h2>
+
+            <div class="attendance-toolbar">
+                <select id="lowAttendanceSubjectFilter">
+                    <option value="">Select Subject</option>
+                </select>
+
+                <select id="lowAttendanceSectionFilter">
+                    <option value="">Select Section</option>
+                </select>
+
+                <select id="lowCriteriaMode">
+                    <option value="percentage" selected>Percentage Below</option>
+                    <option value="attended">Attended Classes Below</option>
+                </select>
+
+                <input type="number" id="lowCriteriaValue" min="0" step="0.5" value="75" title="Criteria value">
+
+                <button class="toolbar-btn" onclick="loadLowAttendance()">Apply</button>
+            </div>
+
+            <div id="lowAttendanceMeta" class="muted"></div>
+
+            <table id="lowAttendanceTable">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Total Classes</th>
+                        <th>Attended</th>
+                        <th>Attendance %</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ================= ADD PERSON ================= -->
+    <div id="upload" class="section" style="display:none;">
+
+        <div class="card capture-box">
+
+            <h2>👤 Add New Person</h2>
+
+            <!-- ===== UPLOAD ===== -->
+            <div class="upload-section">
+                <h3>📂 Upload Image</h3>
+
+                <form action="/upload" method="POST" enctype="multipart/form-data">
+                    <input type="text" name="name" placeholder="Enter Name" required>
+                    <select name="section" id="uploadSection">
+                        <option value="">Section (optional)</option>
+                    </select>
+                    <input type="file" name="image" required>
+                    <button type="submit">Upload</button>
+                </form>
+            </div>
+
+            <hr>
+
+            <!-- ===== CAPTURE ===== -->
+            <div class="capture-section">
+
+                <h3>📸 Capture Using Camera</h3>
+
+                <div class="capture-instruction">
+                    Align your face properly in front of camera.<br>
+                    System will capture 10 images automatically.
+                </div>
+
+                <input type="text" id="personName" placeholder="Enter Name">
+
+                <select id="personSection">
+                    <option value="">Section (optional)</option>
+                </select>
+
+                <br>
+
+                <img id="captureFeed" width="400">
+
+                <br>
+
+                <button onclick="startCaptureCamera()">Start Camera</button>
+                <button onclick="stopCaptureCamera()">Stop Camera</button>
+
+                <button class="capture-btn" onclick="capturePhoto()">
+                    📸 Capture 10 Images
+                </button>
+
+                <div id="captureStatus"></div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- ================= SECTIONS ================= -->
+    <div id="sections" class="section" style="display:none;">
+    <div class="card capture-box">
+        <h2><i class="fa-solid fa-layer-group"></i> Sections & Students</h2>
+
+        <div class="manage-grid">
+            <div class="manage-card">
+                <h3>Add Section</h3>
+                <div class="manage-row">
+                    <input type="text" id="newSectionName" placeholder="e.g., A / B / F / H">
+                    <button class="apply-btn" onclick="addSection()">Add</button>
+                </div>
+                <div id="sectionStatus" class="google-status"></div>
+            </div>
+
+            <div class="manage-card">
+                <h3>Add Student</h3>
+                <div class="manage-row">
+                    <input type="text" id="newStudentName" placeholder="Student name (must match face name)">
+                    <select id="studentSectionSelect"></select>
+                    <button class="apply-btn" onclick="addStudent()">Add</button>
+                </div>
+                <div id="studentStatus" class="google-status"></div>
+            </div>
+        </div>
+
+        <div class="manage-bottom">
+            <h3>Students by Section</h3>
+            <div id="studentsBySection" class="activity-list"></div>
+        </div>
+
+        <div class="manage-bottom">
+            <h3>Subjects</h3>
+            <div class="manage-row">
+                <input type="text" id="newSubjectName" placeholder="e.g., MATH / SCIENCE">
+                <button class="apply-btn" onclick="addSubject()">Add</button>
+            </div>
+            <div id="subjectsList" class="activity-list"></div>
+        </div>
+    </div>
+    </div>
+
+</div><div class="footer">
+        <div class="footer-content">
+            
+            <div class="social-links">
+                <a href="mailto:your.email@gmail.com" target="_blank" title="Email Us"><i class="fa-solid fa-envelope"></i></a>
+                <a href="https://instagram.com/your_username" target="_blank" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
+                <a href="https://linkedin.com/in/your_profile" target="_blank" title="LinkedIn"><i class="fa-brands fa-linkedin"></i></a>
+            </div>
+
+            <p class="copyright">&copy; 2025-2026 <strong>AI Face Attendance System</strong>. All Rights Reserved.</p>
+            <p class="footer-team">Built for J-Techtrix 7.0 by: Ayush singh | JECRC, Jaipur</p>
+            
+        </div>
+    </div>
+
+<!-- ===== TOAST ===== -->
+<div id="toast"></div>
+
+<!-- ================= SCRIPT ================= -->
+<script>
+
+// ===== SAFE START =====
+document.addEventListener("DOMContentLoaded", function(){
+
+let lastCount = 0;
+
+// ===== NAVIGATION =====
+window.showSection = function(id){
+    document.querySelectorAll('.section').forEach(sec => sec.style.display='none');
+    document.getElementById(id).style.display='block';
+}
+
+// ===== CAMERA =====
+window.startCamera = function(){
+    // The "?t=" adds a unique timestamp so the browser doesn't cache the dead stream
+    document.getElementById("videoFeed").src = "/video?t=" + new Date().getTime();
+}
+
+window.stopCamera = function(){
+    document.getElementById("videoFeed").src = "";
+}
+
+// ===== CAPTURE CAMERA =====
+window.startCaptureCamera = function(){
+    document.getElementById("captureFeed").src = "/video?t=" + new Date().getTime();
+}
+
+window.stopCaptureCamera = function(){
+    document.getElementById("captureFeed").src = "";
+}
+
+// ===== CAPTURE FUNCTION =====
+window.capturePhoto = function(){
+    let name = document.getElementById("personName").value;
+    let section = document.getElementById("personSection").value;
+    let status = document.getElementById("captureStatus");
+
+    if(!name){
+        showToast("Enter name first!");
+        return;
+    }
+
+    document.getElementById("videoFeed").src = "";
+    document.getElementById("captureFeed").src = "";
+
+    status.innerText = "Capturing...";
+
+    fetch('/capture', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `name=${encodeURIComponent(name)}&section=${encodeURIComponent(section)}`
+    })
+    .then(res => res.json())
+    .then(data => {
+
+        if(data.status === "success"){
+            showToast("Capture done!");
+
+            setTimeout(()=>{
+                document.getElementById("videoFeed").src = "/video";
+            },1000);
+
+        } else {
+            showToast("Capture failed");
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        showToast("Error occurred");
+    });
+}
+
+// ===== STATUS / TUNING =====
+function refreshStatus(){
+    fetch('/status')
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById("peopleCount").innerText = data.people_count ?? '-';
+        document.getElementById("thresholdValueTop").innerText = data.threshold ?? '-';
+        document.getElementById("chipPeople").innerText = `Known People: ${data.people_count ?? '-'}`;
+        document.getElementById("chipThreshold").innerText = `Threshold: ${data.threshold ?? '-'}`;
+
+        const slider = document.getElementById("thresholdRange");
+        const thresholdValue = document.getElementById("thresholdValue");
+        if(slider && thresholdValue && data.threshold !== undefined){
+            slider.value = data.threshold;
+            thresholdValue.innerText = data.threshold;
+        }
+
+        const hintEl = document.getElementById("stabilityHint");
+        if(hintEl && data.stable_frames !== undefined){
+            hintEl.innerText = `Stability: ${data.stable_frames} consistent detections (improves accuracy).`;
+        }
+
+        const activeInfo = document.getElementById("activeSessionInfo");
+        if(activeInfo){
+            if(data.active_session && data.active_session.session_id){
+                const s = data.active_session.subject || "GENERAL";
+                const sec = data.active_session.section || "GENERAL";
+                activeInfo.innerText = `Active session: ${s} | ${sec} (ID: ${data.active_session.session_id})`;
+            }else{
+                activeInfo.innerText = "No session started.";
+            }
+        }
+    })
+    .catch(()=>{ /* ignore */ });
+}
+
+window.applyThreshold = function(){
+    const value = document.getElementById("thresholdRange").value;
+    fetch('/set_threshold', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `value=${value}`
+    })
+    .then(res => res.json())
+    .then(data => {
+        if(data.status === "success"){
+            showToast("Threshold updated");
+            refreshStatus();
+        } else {
+            showToast("Failed to update threshold");
+        }
+    })
+    .catch(()=>{
+        showToast("Error updating threshold");
+    });
+}
+
+// ===== SUBJECTS / SESSIONS / LOW ATTENDANCE =====
+function loadSubjectsUI(){
+    return fetch('/subjects?include_attendance=true')
+    .then(res=>res.json())
+    .then(data=>{
+        const subjects = (data.data && data.data.length ? data.data : ["GENERAL"]).map(s=>String(s).toUpperCase());
+
+        // Session start dropdown (must be a specific subject)
+        const sessionSel = document.getElementById("sessionSubjectSelect");
+        if(sessionSel){
+            setSelectOptions(sessionSel, subjects.map(s=>({value:s, text:s})), {keepFirstOption:false});
+            if(subjects.length) sessionSel.value = subjects[0];
+        }
+
+        // Manual attendance subject dropdown (default to first subject)
+        const manualSubSel = document.getElementById("manualSubjectSelect");
+        if(manualSubSel){
+            // Keep the placeholder option ("Select Subject") but select the first real subject by default.
+            setSelectOptions(
+                manualSubSel,
+                subjects.map(s=>({value:s, text:s})),
+                {keepFirstOption:true}
+            );
+            if(subjects.length) manualSubSel.value = subjects[0];
+        }
+
+        // Attendance filter (All Subjects => keep first option with value="")
+        const attendanceSubSel = document.getElementById("attendanceSubjectFilter");
+        if(attendanceSubSel){
+            setSelectOptions(
+                attendanceSubSel,
+                subjects.map(s=>({value:s, text:s})),
+                {keepFirstOption:true}
+            );
+        }
+
+        // Low attendance subject selector (must be specific)
+        const lowSubSel = document.getElementById("lowAttendanceSubjectFilter");
+        if(lowSubSel){
+            setSelectOptions(lowSubSel, subjects.map(s=>({value:s, text:s})), {keepFirstOption:true});
+            if(subjects.length) lowSubSel.value = subjects[0];
+        }
+
+        // Subjects list (for add/delete)
+        const listEl = document.getElementById("subjectsList");
+        if(listEl){
+            listEl.innerHTML = subjects.map(s=>{
+                const disabled = s === "GENERAL" ? "disabled" : "";
+                return `<div class="activity-item">
+                    <span class="activity-name">${escapeHtml(s)}</span>
+                    <button class="btn-delete-small" ${disabled} data-delete-subject="${escapeHtml(s)}" title="Delete subject">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>`;
+            }).join("");
+
+            listEl.querySelectorAll("[data-delete-subject]").forEach(btn=>{
+                if(btn.hasAttribute("disabled")) return;
+                btn.onclick = () => deleteSubject(btn.getAttribute("data-delete-subject"));
+            });
+        }
+    })
+    .catch(()=>{ /* ignore */ });
+}
+
+window.startAttendanceSession = function(){
+    const subject = document.getElementById("sessionSubjectSelect")?.value || "";
+    const section = document.getElementById("sessionSectionSelect")?.value || "";
+
+    if(!subject){
+        showToast("Select subject first");
+        return;
+    }
+    if(!section){
+        showToast("Select section first");
+        return;
+    }
+
+    fetch('/session/start', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`subject=${encodeURIComponent(subject)}&section=${encodeURIComponent(section)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.status === "success"){
+            showToast("Class session started");
+            const info = document.getElementById("activeSessionInfo");
+            if(info){
+                info.innerText = `Active session: ${data.subject} | ${data.section} (ID: ${data.session_id})`;
+            }
+            refreshStatus();
+            loadAttendance();
+        }else{
+            showToast(data.reason || "Failed to start session");
+        }
+    })
+    .catch(()=>showToast("Error starting session"));
+}
+
+window.addSubject = function(){
+    const subject = (document.getElementById("newSubjectName")?.value || "").trim();
+    if(!subject){
+        showToast("Enter subject name");
+        return;
+    }
+
+    fetch('/subjects', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`subject=${encodeURIComponent(subject)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.status === "success"){
+            showToast("Subject added");
+            document.getElementById("newSubjectName").value = "";
+            loadSubjectsUI();
+            refreshStatus();
+        }else{
+            showToast(data.reason || "Failed to add subject");
+        }
+    })
+    .catch(()=>showToast("Error adding subject"));
+}
+
+window.deleteSubject = function(subject){
+    if(!subject) return;
+    if(!confirm(`Delete subject "${subject}"?\nThis will remove its sessions and attendance records.`)) return;
+
+    fetch('/subjects/delete', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`subject=${encodeURIComponent(subject)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.status === "success"){
+            showToast("Subject deleted");
+            loadSubjectsUI();
+            loadAttendance();
+            loadLowAttendance();
+            refreshStatus();
+        }else{
+            showToast(data.reason || "Failed to delete subject");
+        }
+    })
+    .catch(()=>showToast("Error deleting subject"));
+}
+
+window.loadLowAttendance = function(){
+    const subject = document.getElementById("lowAttendanceSubjectFilter")?.value || "";
+    const section = document.getElementById("lowAttendanceSectionFilter")?.value || "";
+    const mode = document.getElementById("lowCriteriaMode")?.value || "percentage";
+    const value = document.getElementById("lowCriteriaValue")?.value || "0";
+
+    if(!subject || !section){
+        showToast("Select subject and section");
+        return;
+    }
+
+    fetch('/low-attendance', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`subject=${encodeURIComponent(subject)}&section=${encodeURIComponent(section)}&mode=${encodeURIComponent(mode)}&value=${encodeURIComponent(value)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        const tbody = document.querySelector("#lowAttendanceTable tbody");
+        const meta = document.getElementById("lowAttendanceMeta");
+        if(meta){
+            meta.innerText = `Total classes for ${data.subject} (${data.section}) : ${data.total_classes}.`;
+        }
+        if(!tbody) return;
+
+        const students = data.students || [];
+        tbody.innerHTML = students.length
+            ? students.map(st=>{
+                return `<tr>
+                    <td>${escapeHtml(st.name)}</td>
+                    <td>${st.total_classes}</td>
+                    <td>${st.attended_classes}</td>
+                    <td>${st.percentage}%</td>
+                </tr>`;
+            }).join("")
+            : `<tr><td colspan="4" class="muted">No low-attendance students found.</td></tr>`;
+    })
+    .catch(()=>showToast("Error loading low attendance"));
+}
+
+// ===== SECTIONS / STUDENTS =====
+function setSelectOptions(selectEl, options, {keepFirstOption} = {}){
+    if(!selectEl) return;
+    if(keepFirstOption && selectEl.options.length > 0){
+        const first = selectEl.options[0];
+        selectEl.innerHTML = "";
+        selectEl.appendChild(first);
+    }else{
+        selectEl.innerHTML = "";
+    }
+
+    options.forEach(opt=>{
+        const o = document.createElement("option");
+        o.value = opt.value;
+        o.text = opt.text;
+        selectEl.appendChild(o);
+    });
+}
+
+function loadSectionsUI(){
+    const ids = [
+        { id: "manualSection", type: "sections" },
+        { id: "attendanceSectionFilter", type: "attendanceFilter" },
+        { id: "studentSectionSelect", type: "sections" },
+        { id: "personSection", type: "optional" },
+        { id: "uploadSection", type: "optional" },
+    ];
+
+    // Always include GENERAL option (even if DB is empty)
+    const fallback = ["GENERAL"];
+
+    return fetch('/sections?include_attendance=true')
+        .then(res=>res.json())
+        .then(data=>{
+            const sections = (data.data && data.data.length ? data.data : fallback).map(s=>String(s).toUpperCase());
+
+            // Manual section dropdown: default GENERAL
+            setSelectOptions(
+                document.getElementById("manualSection"),
+                sections.map(s=>({value:s, text:s})),
+                {keepFirstOption:false}
+            );
+
+            // Attendance section filter: keep first "All Sections" option
+            const attendanceSel = document.getElementById("attendanceSectionFilter");
+            if(attendanceSel){
+                const first = attendanceSel.options.length ? attendanceSel.options[0] : null;
+                setSelectOptions(
+                    attendanceSel,
+                    sections.map(s=>({value:s, text:s})),
+                    {keepFirstOption:true}
+                );
+                // If the HTML didn't have "All Sections", add it back.
+                if(first && first.value === "" && attendanceSel.options.length > 0 && attendanceSel.options[0].value !== ""){
+                    setSelectOptions(attendanceSel, [{value:"", text:"All Sections"}, ...sections.map(s=>({value:s, text:s}))]);
+                }
+            }
+
+            // Student section dropdown for addStudent
+            setSelectOptions(
+                document.getElementById("studentSectionSelect"),
+                sections.map(s=>({value:s, text:s})),
+                {keepFirstOption:false}
+            );
+
+            // Optional selects for capture/upload
+            const optionalOpts = [{value:"", text:"Section (optional)"}, ...sections.map(s=>({value:s, text:s}))];
+            setSelectOptions(document.getElementById("personSection"), optionalOpts);
+            setSelectOptions(document.getElementById("uploadSection"), optionalOpts);
+
+            // Session + Low Attendance section selects
+            setSelectOptions(
+                document.getElementById("sessionSectionSelect"),
+                sections.map(s=>({value:s, text:s})),
+                {keepFirstOption:false}
+            );
+            setSelectOptions(
+                document.getElementById("lowAttendanceSectionFilter"),
+                sections.map(s=>({value:s, text:s})),
+                {keepFirstOption:false}
+            );
+
+            // Set defaults
+            if(document.getElementById("manualSection")){
+                document.getElementById("manualSection").value = "GENERAL";
+            }
+            if(document.getElementById("sessionSectionSelect")){
+                document.getElementById("sessionSectionSelect").value = "GENERAL";
+            }
+            if(document.getElementById("lowAttendanceSectionFilter")){
+                document.getElementById("lowAttendanceSectionFilter").value = "GENERAL";
+            }
+        })
+        .catch(()=>{ /* ignore */ });
+}
+
+function loadStudentsBySectionUI(){
+    fetch('/students')
+    .then(res=>res.json())
+    .then(data=>{
+        const el = document.getElementById("studentsBySection");
+        if(!el) return;
+        const rows = data.data || [];
+        const grouped = {};
+        rows.forEach(r=>{
+            const name = r[0];
+            const section = (r[1] || "GENERAL").toString();
+            const s = section.toUpperCase();
+            if(!grouped[s]) grouped[s] = [];
+            grouped[s].push({name, section: s});
+        });
+        const sections = Object.keys(grouped).sort();
+        el.innerHTML = sections.length
+            ? sections.map(s=>{
+                const students = grouped[s].sort((a,b)=>a.name.localeCompare(b.name));
+                const listHtml = students.map(st=>
+                    `<span class="student-chip"><span>${escapeHtml(st.name)}</span> <button class="btn-delete-small" data-delete-student="${escapeHtml(st.name)}" title="Delete student"><i class="fa-solid fa-trash"></i></button></span>`
+                ).join("");
+                return `<div class="section-block">
+                    <div class="section-block-header">
+                        <span class="activity-name">${escapeHtml(s)}</span>
+                        <button class="btn-delete-small" data-delete-section="${escapeHtml(s)}" title="Delete section" ${s==="GENERAL"?"disabled":""}><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                    <div class="section-block-students">${listHtml || "<span class=\"muted\">No students</span>"}</div>
+                </div>`;
+            }).join("")
+            : `<div class="muted">No students added yet.</div>`;
+        document.querySelectorAll("#studentsBySection [data-delete-student]").forEach(btn=>{
+            btn.onclick = ()=> deleteStudent(btn.getAttribute("data-delete-student"));
+        });
+        document.querySelectorAll("#studentsBySection [data-delete-section]").forEach(btn=>{
+            btn.onclick = ()=> deleteSection(btn.getAttribute("data-delete-section"));
+        });
+    })
+    .catch(()=>{ /* ignore */ });
+}
+
+function escapeHtml(text){
+    const d=document.createElement("div");
+    d.textContent=text;
+    return d.innerHTML;
+}
+
+window.deleteStudent = function(name){
+    if(!confirm("Delete student \"" + name + "\"? This will remove their face data and retrain the model.")) return;
+    fetch('/students/delete', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`name=${encodeURIComponent(name)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.status === "success"){
+            showToast("Student deleted");
+            loadSectionsUI().then(()=>loadStudentsBySectionUI());
+            refreshStatus();
+        } else {
+            showToast(data.reason || "Failed to delete");
+        }
+    })
+    .catch(()=>showToast("Error deleting student"));
+}
+
+window.deleteSection = function(section){
+    if(section === "GENERAL") return;
+    if(!confirm("Delete section \"" + section + "\"? Students will be moved to GENERAL.")) return;
+    fetch('/sections/delete', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`section=${encodeURIComponent(section)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.status === "success"){
+            showToast("Section deleted");
+            loadSectionsUI().then(()=>loadStudentsBySectionUI());
+        } else {
+            showToast(data.reason || "Failed to delete");
+        }
+    })
+    .catch(()=>showToast("Error deleting section"));
+}
+
+window.addSection = function(){
+    const section = (document.getElementById("newSectionName")?.value || "").trim();
+    if(!section){
+        showToast("Enter section name");
+        return;
+    }
+    fetch('/sections', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`section=${encodeURIComponent(section)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.status === "success"){
+            showToast("Section added");
+            document.getElementById("sectionStatus").innerText = `Added: ${data.section}`;
+            document.getElementById("newSectionName").value = "";
+            loadSectionsUI().then(()=>loadStudentsBySectionUI());
+        }else{
+            document.getElementById("sectionStatus").innerText = data.reason || "Failed to add section";
+            showToast("Failed to add section");
+        }
+    })
+    .catch(()=>showToast("Error adding section"));
+}
+
+window.addStudent = function(){
+    const name = (document.getElementById("newStudentName")?.value || "").trim();
+    const section = document.getElementById("studentSectionSelect")?.value || "GENERAL";
+    if(!name){
+        showToast("Enter student name");
+        return;
+    }
+    fetch('/students', {
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`name=${encodeURIComponent(name)}&section=${encodeURIComponent(section)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        if(data.status === "success"){
+            showToast("Student added");
+            document.getElementById("studentStatus").innerText = `Added: ${name.toString()} -> ${section}`;
+            document.getElementById("newStudentName").value = "";
+            loadStudentsBySectionUI();
+        }else{
+            document.getElementById("studentStatus").innerText = data.reason || "Failed to add student";
+            showToast("Failed to add student");
+        }
+    })
+    .catch(()=>showToast("Error adding student"));
+}
+
+// ===== MANUAL =====
+window.manualAttendance = function(){
+    let name = document.getElementById("manualName").value;
+    let section = document.getElementById("manualSection").value;
+    let subject = document.getElementById("manualSubjectSelect")?.value || "";
+    let pass = document.getElementById("manualPass").value;
+
+    fetch('/manual_mark',{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`name=${encodeURIComponent(name)}&section=${encodeURIComponent(section)}&subject=${encodeURIComponent(subject)}&password=${encodeURIComponent(pass)}`
+    })
+    .then(res=>res.json())
+    .then(data=>{
+        showToast(data.status==="success" ? "Manual marked" : "Wrong password");
+    });
+}
+
+// ===== DELETE =====
+window.deleteEntry = function(rowid){
+    fetch('/delete',{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:`rowid=${rowid}`
+    }).then(loadAttendance);
+}
+
+// ===== LOAD TABLE =====
+function loadAttendance(){
+    fetch('/attendance')
+    .then(res=>res.json())
+    .then(data=>{
+        const table=document.querySelector("#attendanceTable tbody");
+        table.innerHTML="";
+
+        if(data.data && data.data.length > lastCount){
+            showToast("Attendance marked!");
+        }
+        lastCount = data.data ? data.data.length : 0;
+
+        function toDDMMYYYY(yyyyMmDd){
+            if(!yyyyMmDd) return "";
+            const parts = yyyyMmDd.split('-');
+            if(parts.length !== 3) return "";
+            const [yyyy, mm, dd] = parts;
+            return `${dd}-${mm}-${yyyy}`;
+        }
+
+        const search = (document.getElementById("attendanceSearch")?.value || "").toLowerCase().trim();
+        const modeFilter = document.getElementById("attendanceModeFilter")?.value || "";
+        const dateInput = document.getElementById("attendanceDate")?.value || "";
+        const dateFilter = toDDMMYYYY(dateInput);
+        const sectionFilter = document.getElementById("attendanceSectionFilter")?.value || "";
+        const subjectFilter = document.getElementById("attendanceSubjectFilter")?.value || "";
+
+        // row = [rowid, name, date, time, mode, section, subject, session_id]
+        const filtered = (data.data || []).filter((row)=>{
+            const rowid = row[0];
+            const name = (row[1] ?? "").toString();
+            const date = (row[2] ?? "").toString();
+            const time = (row[3] ?? "").toString();
+            const mode = (row[4] ?? "").toString();
+            const section = (row[5] ?? "").toString();
+            const subject = (row[6] ?? "").toString();
+
+            const blob = `${name} ${mode} ${section} ${subject}`.toLowerCase();
+            const okSearch = !search || blob.includes(search);
+            const okMode = !modeFilter || mode === modeFilter;
+            const okDate = !dateFilter || date === dateFilter;
+            const okSection = !sectionFilter || section === sectionFilter;
+            const okSubject = !subjectFilter || subject === subjectFilter;
+            return okSearch && okMode && okDate && okSection && okSubject;
+        });
+
+        filtered.forEach((row)=>{
+            const rowid = row[0];
+            const name = row[1];
+            const date = row[2];
+            const time = row[3];
+            const mode = row[4];
+            const section = row[5];
+            const subject = row[6];
+            table.innerHTML += `
+            <tr>
+                <td>${name}</td>
+                <td>${date}</td>
+                <td>${time}</td>
+                <td>${mode}</td>
+                <td>${section || 'GENERAL'}</td>
+                <td>${subject || 'GENERAL'}</td>
+                <td><button onclick="deleteEntry(${rowid})">Delete</button></td>
+            </tr>`;
+        });
+
+        // Recent activity (latest 6)
+        const activity = (data.data || []).slice(0,6);
+        const activityEl = document.getElementById("activityList");
+        if(activityEl){
+            activityEl.innerHTML = activity.length
+                ? activity.map(r => `<div class="activity-item"><span class="activity-name">${r[1]}</span><span class="activity-meta">${r[2]} ${r[3]}</span><span class="activity-mode">${r[4]}</span></div>`).join("")
+                : `<div class="muted">No activity yet.</div>`;
+        }
+
+        if(data.data && data.data.length > 0){
+            const latest = data.data[0];
+            const lastText = `${latest[1]} • ${latest[2]} ${latest[3]}`;
+            document.getElementById("lastMarked").innerText = lastText;
+            document.getElementById("chipLast").innerText = `Last Marked: ${latest[1]}`;
+        }
+    });
+}
+
+window.refreshAttendance = function(){
+    loadAttendance();
+}
+
+function escapeCsv(val){
+    const s = (val ?? "").toString();
+    if(s.includes(",") || s.includes("\"") || s.includes("\n")){
+        return `"${s.replace(/\"/g,'""')}"`;
+    }
+    return s;
+}
+
+window.exportAttendance = function(){
+    fetch('/attendance')
+    .then(res => res.json())
+    .then(data => {
+        function toDDMMYYYY(yyyyMmDd){
+            if(!yyyyMmDd) return "";
+            const parts = yyyyMmDd.split('-');
+            if(parts.length !== 3) return "";
+            const [yyyy, mm, dd] = parts;
+            return `${dd}-${mm}-${yyyy}`;
+        }
+
+        const search = (document.getElementById("attendanceSearch")?.value || "").toLowerCase().trim();
+        const modeFilter = document.getElementById("attendanceModeFilter")?.value || "";
+        const dateInput = document.getElementById("attendanceDate")?.value || "";
+        const dateFilter = toDDMMYYYY(dateInput);
+        const sectionFilter = document.getElementById("attendanceSectionFilter")?.value || "";
+        const subjectFilter = document.getElementById("attendanceSubjectFilter")?.value || "";
+
+        const rows = data.data
+            .filter((row)=>{
+                const name = (row[1] ?? "").toString();
+                const date = (row[2] ?? "").toString();
+                const mode = (row[4] ?? "").toString();
+                const section = (row[5] ?? "").toString();
+                const subject = (row[6] ?? "").toString();
+
+                const blob = `${name} ${mode} ${section} ${subject}`.toLowerCase();
+                const okSearch = !search || blob.includes(search);
+                const okMode = !modeFilter || mode === modeFilter;
+                const okDate = !dateFilter || date === dateFilter;
+                const okSection = !sectionFilter || section === sectionFilter;
+                const okSubject = !subjectFilter || subject === subjectFilter;
+                return okSearch && okMode && okDate && okSection && okSubject;
+            });
+
+        const header = ["Name","Date","Time","Mode","Section","Subject"].join(",");
+        const csv = header + "\n" + rows
+            .map(r => [r[1],r[2],r[3],r[4],(r[5] || 'GENERAL'),(r[6] || 'GENERAL')].map(escapeCsv).join(","))
+            .join("\n");
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "attendance_export.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast("CSV exported");
+    })
+    .catch(()=>showToast("Export failed"));
+}
+
+// ===== DOWNLOAD =====
+window.downloadFile = function(){
+    window.location.href = "/download";
+}
+
+// ===== TOAST =====
+window.showToast = function(msg){
+    let t=document.getElementById("toast");
+    t.innerText=msg;
+    t.style.display="block";
+    setTimeout(()=>t.style.display="none",2000);
+}
+
+// ===== ATTENDANCE FILTER LISTENERS =====
+document.getElementById("attendanceSearch")?.addEventListener("input", loadAttendance);
+document.getElementById("attendanceSearch")?.addEventListener("change", loadAttendance);
+document.getElementById("attendanceDate")?.addEventListener("change", loadAttendance);
+document.getElementById("attendanceSectionFilter")?.addEventListener("change", loadAttendance);
+document.getElementById("attendanceSubjectFilter")?.addEventListener("change", loadAttendance);
+document.getElementById("attendanceModeFilter")?.addEventListener("change", loadAttendance);
+
+// ===== AUTO LOAD =====
+loadSectionsUI();
+loadStudentsBySectionUI();
+loadSubjectsUI().then(()=>loadLowAttendance());
+loadAttendance();
+refreshStatus();
+setInterval(loadAttendance,3000);
+
+});
+// ===== SAFE END =====
+
+</script>
+
+</body>
+</html>
